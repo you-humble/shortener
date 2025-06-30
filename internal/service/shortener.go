@@ -44,7 +44,7 @@ func (s *urlService) GenerateShortURL(scheme, original string) (string, error) {
 
 func (s *urlService) OriginalURL(short string) (string, error) {
 	if short == "" {
-		return "", fmt.Errorf("empty path")
+		return "", errors.New("empty path")
 	}
 
 	original, err := s.repo.Get(short)
@@ -64,5 +64,5 @@ func genShortURL(url string) string {
 }
 
 func hasScheme(addr string) bool {
-    return strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://")
+	return strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://")
 }
