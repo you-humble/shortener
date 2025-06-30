@@ -1,13 +1,13 @@
 package app
 
 import (
-	"log"
 	"net/http"
 
 	"shortener/internal/config"
 	handler "shortener/internal/handler/http"
 	"shortener/internal/repo"
 	"shortener/internal/service"
+	"shortener/internal/shared/logger"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -20,6 +20,7 @@ type urlHandler interface {
 }
 
 type App struct {
+	log *logger.Logger
 	srv *http.Server
 }
 
@@ -31,9 +32,15 @@ func New() *App {
 }
 
 func (a *App) Run() error {
-	log.Printf("server started on address - %s", a.srv.Addr)
+	defer a.log.Sync()
+
+	a.log.Info(
+		"Server started",
+		logger.String("addr", a.srv.Addr),
+	)
 	err := a.srv.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
+		a.log.Error("server error", logger.Error(err))
 		return err
 	}
 	return nil
@@ -41,28 +48,31 @@ func (a *App) Run() error {
 
 func (a *App) initDeps() {
 	cfg := config.MustLoad()
+	log := logger.New(cfg.App.LogLevel)
 	repo := repo.NewURLRepository()
 	svc := service.NewURLService(cfg.App.BaseAddr, repo)
-	h := handler.NewURLHandler(svc)
+	h := handler.NewURLHandler(log, svc)
 	r := router(h)
 
+	a.log = log
 	a.srv = &http.Server{
 		Addr:    cfg.App.Addr(),
 		Handler: r,
 	}
+
 }
 
 func router(h urlHandler) http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(middleware.Logger)
+	r.Use(logger.MiddlewareHTTP)
 	r.Use(middleware.Recoverer)
 
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.AllowContentType("text/plain", "application/json"))
-		r.Post("/", h.ShortenURLText)
-		r.Post("/api/shorten", h.ShortenURLJSON)
-	})
+	r.With(middleware.AllowContentType("text/plain")).
+		Post("/", h.ShortenURLText)
+	r.With(middleware.AllowContentType("application/json")).
+		Post("/api/shorten", h.ShortenURLJSON)
+
 	r.Get("/{short}", h.RedirectURL)
 
 	return r

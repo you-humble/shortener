@@ -4,18 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
+	"shortener/internal/model"
+	"shortener/internal/shared/logger"
 	"strings"
 )
-
-type shortenRequest struct {
-	URL string `json:"url"`
-}
-
-type shortenResponse struct {
-	Result string `json:"result"`
-}
 
 type URLService interface {
 	GenerateShortURL(string, string) (string, error)
@@ -23,18 +16,19 @@ type URLService interface {
 }
 
 type urlHandler struct {
+	log *logger.Logger
 	svc URLService
 }
 
-func NewURLHandler(svc URLService) *urlHandler {
-	return &urlHandler{svc: svc}
+func NewURLHandler(log *logger.Logger, svc URLService) *urlHandler {
+	return &urlHandler{log: log, svc: svc}
 }
 
 func (h *urlHandler) RedirectURL(w http.ResponseWriter, r *http.Request) {
 	shortURL := strings.Trim(r.URL.Path, "/")
 	originalURL, err := h.svc.OriginalURL(shortURL)
 	if err != nil {
-		log.Println("redirectURL error:", err)
+		h.log.Error("RedirectURL", logger.Error(err))
 		http.NotFound(w, r)
 		return
 	}
@@ -45,7 +39,7 @@ func (h *urlHandler) RedirectURL(w http.ResponseWriter, r *http.Request) {
 func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
 	b, err := readBody(r)
 	if err != nil {
-		log.Println("shortenURL error:", err)
+		h.log.Error("ShortenURLText", logger.Error(err))
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
@@ -59,7 +53,7 @@ func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.svc.GenerateShortURL(scheme, originalURL)
 	if err != nil {
-		log.Println("shortenURL error:", err)
+		h.log.Error("ShortenURLText", logger.Error(err))
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -71,19 +65,19 @@ func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
 func (h *urlHandler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 	b, err := readBody(r)
 	if err != nil {
-		log.Println("shortenURL error:", err)
+		h.log.Error("ShortenURLJSON", logger.Error(err))
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 
-	var urlRecv shortenRequest
+	var urlRecv model.ShortenRequest
 	if err := json.Unmarshal(b, &urlRecv); err != nil {
-		log.Println("shortenURL error:", err)
+		h.log.Error("ShortenURLJSON", logger.Error(err))
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 	if urlRecv.URL == "" {
-		log.Println("shortenURL error:", "empty URL")
+		h.log.Error("ShortenURLJSON", logger.ErrorS("empty URL"))
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
@@ -95,15 +89,15 @@ func (h *urlHandler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.svc.GenerateShortURL(scheme, urlRecv.URL)
 	if err != nil {
-		log.Println("shortenURL error:", err)
+		h.log.Error("ShortenURLJSON", logger.Error(err))
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(shortenResponse{Result: resp}); err != nil {
-		log.Println("shortenURL error:", err)
+	if err := json.NewEncoder(w).Encode(model.ShortenResponse{Result: resp}); err != nil {
+		h.log.Error("ShortenURLJSON", logger.Error(err))
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}

@@ -64,7 +64,7 @@ func TestURLHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewURLHandler(&urlServiceMock{})
+			h := NewURLHandler(nil, &urlServiceMock{})
 
 			w := httptest.NewRecorder()
 			body := bytes.NewBuffer([]byte(tc.body))

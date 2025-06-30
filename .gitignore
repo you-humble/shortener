@@ -12,7 +12,7 @@
 *.out
 
 # Binaries
-bin/*
+bin/shortener
 
 # Dependency directories (remove the comment below to include it)
 vendor/

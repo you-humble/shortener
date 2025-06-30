@@ -14,6 +14,7 @@ type App struct {
 	Host     string
 	Port     string
 	BaseAddr string
+	LogLevel string
 }
 
 func (a App) Addr() string {
@@ -23,9 +24,10 @@ func (a App) Addr() string {
 func MustLoad() *Config {
 	const baseAddr string = "localhost:8080"
 
-	var aAddr, bAddr string
+	var aAddr, bAddr, logLevel string
 	flag.StringVar(&aAddr, "a", baseAddr, "HTTP server addres")
 	flag.StringVar(&bAddr, "b", baseAddr, "base short URL address")
+	flag.StringVar(&logLevel, "l", "info", "log level")
 
 	flag.Parse()
 
@@ -35,6 +37,10 @@ func MustLoad() *Config {
 
 	if envBAddr, ok := os.LookupEnv("BASE_URL"); ok {
 		bAddr = envBAddr
+	}
+
+	if envLogLevel, ok := os.LookupEnv("LOG_LEVEL"); ok {
+		logLevel = envLogLevel
 	}
 
 	hostPort := strings.Split(aAddr, ":")
@@ -50,6 +56,7 @@ func MustLoad() *Config {
 	cfg.App.Host = hostPort[0]
 	cfg.App.Port = hostPort[1]
 	cfg.App.BaseAddr = bAddr
+	cfg.App.LogLevel = logLevel
 
 	return cfg
 }

@@ -1,0 +1,2 @@
+{"level":"info","ts":"2025-06-29T21:34:39.248+0300","caller":"app/app.go:37","msg":"Server started","addr":"localhost:8080"}
+{"level":"info","ts":"2025-06-29T21:35:57.420+0300","caller":"app/app.go:37","msg":"Server started","addr":"localhost:8080"}
