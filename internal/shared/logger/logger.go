@@ -32,7 +32,7 @@ func NewFile(level string) *Logger {
 		Fatal("logger.New", Error(err))
 	}
 
-	file, err := os.OpenFile("./log/info.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile("./log/info.log", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		Fatal("logger.New", Error(err))
 	}

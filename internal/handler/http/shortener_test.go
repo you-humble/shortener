@@ -21,6 +21,7 @@ const (
 
 type urlServiceMock struct{}
 
+// TODO: test json, test gzip
 func (s *urlServiceMock) GenerateShortURL(scheme, original string) (string, error) {
 	if original == "wrong" {
 		return "", errors.New("service error")

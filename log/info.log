@@ -1,2 +1,5 @@
-{"level":"info","ts":"2025-06-29T21:34:39.248+0300","caller":"app/app.go:37","msg":"Server started","addr":"localhost:8080"}
-{"level":"info","ts":"2025-06-29T21:35:57.420+0300","caller":"app/app.go:37","msg":"Server started","addr":"localhost:8080"}
+{"level":"info","ts":"2025-07-01T22:08:32.199+0300","caller":"app/app.go:38","msg":"Server started","addr":"localhost:8080"}
+{"level":"info","ts":"2025-07-01T22:08:32.311+0300","caller":"logger/middleware.go:41","msg":"","method":"POST","uri":"/","status":201,"time":0.004180541,"size":54}
+{"level":"info","ts":"2025-07-01T22:08:32.313+0300","caller":"logger/middleware.go:41","msg":"","method":"POST","uri":"/api/shorten","status":201,"time":0.000560502,"size":68}
+{"level":"info","ts":"2025-07-01T22:08:32.314+0300","caller":"logger/middleware.go:41","msg":"","method":"GET","uri":"/GVHJABKF","status":307,"time":0.000035637,"size":61}
+{"level":"info","ts":"2025-07-01T22:08:32.316+0300","caller":"logger/middleware.go:41","msg":"","method":"GET","uri":"/49UN2CIJ","status":307,"time":0.000025321,"size":63}

@@ -23,3 +23,4 @@ testbeta: build
 	shortenertestbeta -test.v -test.run=^TestIteration5$$ -source-path=. -binary-path=bin/shortener -server-port=8080
 	shortenertestbeta -test.v -test.run=^TestIteration6$$ -source-path=.
 	shortenertestbeta -test.v -test.run=^TestIteration7$$ -source-path=. -binary-path=bin/shortener
+	shortenertestbeta -test.v -test.run=^TestIteration8$$ -binary-path=bin/shortener

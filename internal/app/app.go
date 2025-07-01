@@ -7,6 +7,7 @@ import (
 	handler "shortener/internal/handler/http"
 	"shortener/internal/repo"
 	"shortener/internal/service"
+	"shortener/internal/shared/compress/gzip"
 	"shortener/internal/shared/logger"
 
 	"github.com/go-chi/chi/v5"
@@ -48,7 +49,7 @@ func (a *App) Run() error {
 
 func (a *App) initDeps() {
 	cfg := config.MustLoad()
-	log := logger.New(cfg.App.LogLevel)
+	log := logger.NewFile(cfg.App.LogLevel)
 	repo := repo.NewURLRepository()
 	svc := service.NewURLService(cfg.App.BaseAddr, repo)
 	h := handler.NewURLHandler(log, svc)
@@ -68,9 +69,9 @@ func router(h urlHandler) http.Handler {
 	r.Use(logger.MiddlewareHTTP)
 	r.Use(middleware.Recoverer)
 
-	r.With(middleware.AllowContentType("text/plain")).
+	r.With(middleware.AllowContentType("text/plain", "text/html", "application/x-gzip"), gzip.Middleware).
 		Post("/", h.ShortenURLText)
-	r.With(middleware.AllowContentType("application/json")).
+	r.With(middleware.AllowContentType("application/json"), gzip.Middleware).
 		Post("/api/shorten", h.ShortenURLJSON)
 
 	r.Get("/{short}", h.RedirectURL)
