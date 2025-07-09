@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:17.5
+    container_name: db
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: eblan
+      POSTGRES_PASSWORD: ne_eblan
+      POSTGRES_DB: shortener
+    volumes:
+      - "db-data:/var/lib/postgres/data"
+
+volumes:
+  db-data:

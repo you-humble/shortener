@@ -1,32 +1,42 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strings"
+
 	"shortener/internal/model"
 	"shortener/internal/shared/logger"
-	"strings"
 )
 
 type URLService interface {
-	GenerateShortURL(string, string) (string, error)
-	OriginalURL(string) (string, error)
+	Ping(context.Context) error
+	GenerateShortURL(context.Context, string, string, string) (string, error)
+	GenerateShortBatch(context.Context, string, string, []model.ShortenBatchRequest) ([]model.ShortenBatchResponse, error)
+	OriginalURL(context.Context, string) (string, error)
+	UserStore(context.Context, string) ([]model.URLStore, error)
+}
+
+type AuthService interface {
+	UserIDFromContext(context.Context) (string, bool)
 }
 
 type urlHandler struct {
-	log *logger.Logger
-	svc URLService
+	log  *logger.Logger
+	svc  URLService
+	auth AuthService
 }
 
-func NewURLHandler(log *logger.Logger, svc URLService) *urlHandler {
-	return &urlHandler{log: log, svc: svc}
+func NewURLHandler(log *logger.Logger, svc URLService, auth AuthService) *urlHandler {
+	return &urlHandler{log: log, svc: svc, auth: auth}
 }
 
 func (h *urlHandler) RedirectURL(w http.ResponseWriter, r *http.Request) {
 	shortURL := strings.Trim(r.URL.Path, "/")
-	originalURL, err := h.svc.OriginalURL(shortURL)
+	originalURL, err := h.svc.OriginalURL(r.Context(), shortURL)
 	if err != nil {
 		h.log.Error("RedirectURL", logger.Error(err))
 		http.NotFound(w, r)
@@ -36,9 +46,45 @@ func (h *urlHandler) RedirectURL(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
-func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
-	b, err := readBody(r)
+func (h *urlHandler) AllUserURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.auth.UserIDFromContext(r.Context())
+	if !ok {
+		h.log.Error("AllUserURLs", logger.ErrorS("unauthorized user"))
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	resp, err := h.svc.UserStore(r.Context(), userID)
 	if err != nil {
+		h.log.Error("AllUserURLs", logger.Error(err))
+		http.NotFound(w, r)
+		return
+	}
+	if len(resp) == 0 {
+		h.log.Info("AllUserURLs", logger.ErrorS("empty user store"))
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.log.Error("AllUserURLs", logger.Error(err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.auth.UserIDFromContext(r.Context())
+	if !ok {
+		h.log.Error("AllUserURLs", logger.ErrorS("unauthorized user"))
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	b, err := readBody(r)
+	if err != nil || len(b) == 0 {
 		h.log.Error("ShortenURLText", logger.Error(err))
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -51,8 +97,14 @@ func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
 		scheme = "https"
 	}
 
-	resp, err := h.svc.GenerateShortURL(scheme, originalURL)
+	resp, err := h.svc.GenerateShortURL(r.Context(), scheme, userID, originalURL)
 	if err != nil {
+		if errors.Is(err, model.ErrURLAlreadyExists) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(resp))
+			return
+		}
 		h.log.Error("ShortenURLText", logger.Error(err))
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -63,6 +115,13 @@ func (h *urlHandler) ShortenURLText(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(resp))
 }
 func (h *urlHandler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.auth.UserIDFromContext(r.Context())
+	if !ok {
+		h.log.Error("AllUserURLs", logger.ErrorS("unauthorized user"))
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	b, err := readBody(r)
 	if err != nil {
 		h.log.Error("ShortenURLJSON", logger.Error(err))
@@ -87,8 +146,18 @@ func (h *urlHandler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		scheme = "https"
 	}
 
-	resp, err := h.svc.GenerateShortURL(scheme, urlRecv.URL)
+	resp, err := h.svc.GenerateShortURL(r.Context(), scheme, userID, urlRecv.URL)
 	if err != nil {
+		if errors.Is(err, model.ErrURLAlreadyExists) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			if err := json.NewEncoder(w).Encode(model.ShortenResponse{Result: resp}); err != nil {
+				h.log.Error("ShortenURLJSON", logger.Error(err))
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			return
+		}
 		h.log.Error("ShortenURLJSON", logger.Error(err))
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -101,6 +170,61 @@ func (h *urlHandler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *urlHandler) ShortenBatchJSON(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.auth.UserIDFromContext(r.Context())
+	if !ok {
+		h.log.Error("AllUserURLs", logger.ErrorS("unauthorized user"))
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	defer r.Body.Close()
+
+	dec := json.NewDecoder(r.Body)
+	var urlRecv []model.ShortenBatchRequest
+	if err := dec.Decode(&urlRecv); err != nil {
+		h.log.Error("ShortenBatchJSON", logger.Error(err))
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		h.log.Error("ShortenBatchJSON", logger.ErrorS("empty URL"))
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+
+	resp, err := h.svc.GenerateShortBatch(r.Context(), scheme, userID, urlRecv)
+	if err != nil {
+		h.log.Error("ShortenBatchJSON", logger.Error(err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.log.Error("ShortenBatchJSON", logger.Error(err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *urlHandler) PingDB(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.Ping(r.Context()); err != nil {
+		h.log.Error("PingDB", logger.Error(err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func readBody(r *http.Request) ([]byte, error) {

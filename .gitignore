@@ -14,8 +14,11 @@
 # Binaries
 bin/*
 
+# Temp
+tmp/*
+
 # Logs
-log/*
+*.log
 
 # Dependency directories (remove the comment below to include it)
 vendor/
