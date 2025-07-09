@@ -12,7 +12,13 @@
 *.out
 
 # Binaries
-bin/shortener
+bin/*
+
+# Temp
+tmp/*
+
+# Logs
+*.log
 
 # Dependency directories (remove the comment below to include it)
 vendor/

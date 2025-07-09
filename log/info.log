@@ -1,2 +1,3 @@
-{"level":"info","ts":"2025-06-29T21:34:39.248+0300","caller":"app/app.go:37","msg":"Server started","addr":"localhost:8080"}
-{"level":"info","ts":"2025-06-29T21:35:57.420+0300","caller":"app/app.go:37","msg":"Server started","addr":"localhost:8080"}
+{"level":"info","ts":"2025-07-02T21:04:26.648+0300","caller":"app/app.go:61","msg":"Using file storage"}
+{"level":"info","ts":"2025-07-02T21:04:26.649+0300","caller":"app/app.go:39","msg":"Server started","addr":"localhost:8080"}
+{"level":"info","ts":"2025-07-02T21:04:52.610+0300","caller":"logger/middleware.go:41","msg":"","method":"POST","uri":"/","status":201,"time":0.001958467,"size":54}
