@@ -54,6 +54,12 @@ func (s *urlServiceMock) UserStore(context.Context, string) ([]model.URLStore, e
 	return nil, nil
 }
 
+func (s *urlServiceMock) MakeDeleted(context.Context, model.DeleteURLsRequest) {}
+
+func (s *urlServiceMock) URLByID(context.Context, int) (model.URLStore, error) {
+	return model.URLStore{}, nil
+}
+
 type authServiceMock struct{}
 
 func (s *authServiceMock) UserIDFromContext(context.Context) (string, bool) {

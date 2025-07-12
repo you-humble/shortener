@@ -24,7 +24,9 @@ type urlHandler interface {
 	ShortenBatchJSON(w http.ResponseWriter, r *http.Request)
 	RedirectURL(w http.ResponseWriter, r *http.Request)
 	AllUserURLs(w http.ResponseWriter, r *http.Request)
+	DeleteURLs(w http.ResponseWriter, r *http.Request)
 	PingDB(w http.ResponseWriter, r *http.Request)
+	URLByID(w http.ResponseWriter, r *http.Request)
 }
 
 type Registrator interface {
@@ -32,8 +34,9 @@ type Registrator interface {
 }
 
 type App struct {
-	log *logger.Logger
-	srv *http.Server
+	log    *logger.Logger
+	srv    *http.Server
+	cancel context.CancelFunc
 }
 
 func New() *App {
@@ -45,6 +48,7 @@ func New() *App {
 
 func (a *App) Run() error {
 	defer a.log.Sync()
+	defer a.cancel()
 
 	a.log.Info(
 		"Server started",
@@ -60,7 +64,7 @@ func (a *App) Run() error {
 
 func (a *App) initDeps() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	a.cancel = cancel
 
 	cfg := config.MustLoad()
 	log := logger.New(cfg.App.LogLevel)
@@ -93,7 +97,7 @@ func (a *App) initDeps() {
 		log.Info("Using in-memory storage")
 	}
 
-	urlSvc := service.NewURLService(cfg.App.BaseAddr, repo)
+	urlSvc := service.NewURLService(ctx, cfg.App.BaseAddr, repo)
 	authSvc := service.NewAuthService(log, cfg.Auth.Secret, cfg.Auth.TokenExpire)
 	h := handler.NewURLHandler(log, urlSvc, authSvc)
 	r := router(h, authSvc)
@@ -120,8 +124,11 @@ func router(h urlHandler, reg Registrator) http.Handler {
 		Post("/api/shorten/batch", h.ShortenBatchJSON)
 
 	r.Get("/{short}", h.RedirectURL)
+	r.Get("/{id:[0-9]+}", h.URLByID)
 	r.Get("/api/user/urls", h.AllUserURLs)
 	r.Get("/ping", h.PingDB)
+
+	r.Delete("/api/user/urls", h.DeleteURLs)
 
 	return r
 }

@@ -15,6 +15,7 @@ func New(level string) *Logger {
 
 	cfg := zap.NewDevelopmentConfig()
 	cfg.Level = lvl
+	cfg.DisableStacktrace = true
 
 	l, err := cfg.Build()
 	if err != nil {

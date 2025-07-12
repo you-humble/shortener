@@ -1,10 +1,11 @@
 package model
 
 type URLStore struct {
-	UUID     int    `json:"uuid"`
-	UserID   string `json:"user_id"`
-	Short    string `json:"short_url"`
-	Original string `json:"original_url"`
+	UUID        int    `json:"uuid"`
+	UserID      string `json:"user_id"`
+	Short       string `json:"short_url"`
+	Original    string `json:"original_url"`
+	DeletedFlag bool   `json:"-"`
 }
 
 type ShortenRequest struct {
@@ -25,3 +26,7 @@ type ShortenBatchResponse struct {
 	Short         string `json:"short_url"`
 }
 
+type DeleteURLsRequest struct {
+	UserID string
+	URLs   []string
+}

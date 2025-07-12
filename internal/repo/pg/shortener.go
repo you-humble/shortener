@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type urlRepository struct {
@@ -30,7 +31,8 @@ func bootstrap(ctx context.Context, db *pgxpool.Pool) error {
 		 	uuid SERIAL NOT NULL PRIMARY KEY,
 			user_id VARCHAR(50) NOT NULL,
 			short_url VARCHAR(10) NOT NULL,
-			original_url VARCHAR NOT NULL UNIQUE
+			original_url VARCHAR NOT NULL UNIQUE,
+			is_deleted BOOLEAN NOT NULL DEFAULT false
 		 )`,
 	)
 	if err != nil {
@@ -110,12 +112,34 @@ func (repo *urlRepository) SaveAll(ctx context.Context, urls []model.URLStore) e
 func (repo *urlRepository) Get(ctx context.Context, short string) (model.URLStore, error) {
 	var u model.URLStore
 	if err := repo.db.QueryRow(ctx,
-		`SELECT uuid, short_url, original_url
+		`SELECT uuid, short_url, original_url, is_deleted
 		FROM urls
 		WHERE short_url = $1`,
 		short,
-	).Scan(&u.UUID, &u.Short, &u.Original); err != nil {
+	).Scan(&u.UUID, &u.Short, &u.Original, &u.DeletedFlag); err != nil {
 		return model.URLStore{}, fmt.Errorf("pg.Get error: failed to find a row: %w", err)
+	}
+
+	if u.DeletedFlag {
+		return model.URLStore{}, model.ErrDeleted
+	}
+
+	return u, nil
+}
+
+func (repo *urlRepository) GetByID(ctx context.Context, uuid int) (model.URLStore, error) {
+	var u model.URLStore
+	if err := repo.db.QueryRow(ctx,
+		`SELECT uuid, user_id, short_url, original_url, is_deleted
+		FROM urls
+		WHERE uuid = $1`,
+		uuid,
+	).Scan(&u.UUID, &u.UserID, &u.Short, &u.Original, &u.DeletedFlag); err != nil {
+		return model.URLStore{}, fmt.Errorf("pg.GetByID error: failed to find a row: %w", err)
+	}
+
+	if u.DeletedFlag {
+		return model.URLStore{}, model.ErrDeleted
 	}
 
 	return u, nil
@@ -125,7 +149,7 @@ func (repo *urlRepository) GetAllByUser(ctx context.Context, userID string) ([]m
 	rows, err := repo.db.Query(ctx,
 		`SELECT short_url, original_url
 		FROM urls
-		WHERE user_id = $1`,
+		WHERE user_id = $1 and is_deleted = false`,
 		userID,
 	)
 	if err != nil {
@@ -147,4 +171,16 @@ func (repo *urlRepository) GetAllByUser(ctx context.Context, userID string) ([]m
 	}
 
 	return res, nil
+}
+
+func (repo *urlRepository) DeleteBatch(ctx context.Context, userID string, urls []string) error {
+	if _, err := repo.db.Exec(ctx,
+		`UPDATE urls SET is_deleted=true
+		 WHERE user_id = $1 AND short_url = ANY($2);`,
+		userID, urls,
+	); err != nil {
+		return fmt.Errorf("pg.DeleteBatch error: delete: %w", err)
+	}
+
+	return nil
 }
