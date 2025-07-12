@@ -37,3 +37,4 @@ testbeta: build
 	shortenertestbeta -test.v -test.run=^TestIteration12$$ -binary-path=bin/shortener -database-dsn=postgres://eblan:ne_eblan@localhost:5432/shortener?sslmode=disable
 	shortenertestbeta -test.v -test.run=^TestIteration13$$ -binary-path=bin/shortener -database-dsn=postgres://eblan:ne_eblan@localhost:5432/shortener?sslmode=disable
 	shortenertestbeta -test.v -test.run=^TestIteration14$$ -binary-path=bin/shortener -database-dsn=postgres://eblan:ne_eblan@localhost:5432/shortener?sslmode=disable
+	shortenertestbeta -test.v -test.run=^TestIteration15$$ -binary-path=bin/shortener -database-dsn=postgres://eblan:ne_eblan@localhost:5432/shortener?sslmode=disable

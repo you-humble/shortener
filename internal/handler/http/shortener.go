@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"shortener/internal/model"
@@ -17,7 +18,9 @@ type URLService interface {
 	GenerateShortURL(context.Context, string, string, string) (string, error)
 	GenerateShortBatch(context.Context, string, string, []model.ShortenBatchRequest) ([]model.ShortenBatchResponse, error)
 	OriginalURL(context.Context, string) (string, error)
+	URLByID(context.Context, int) (model.URLStore, error)
 	UserStore(context.Context, string) ([]model.URLStore, error)
+	MakeDeleted(context.Context, model.DeleteURLsRequest)
 }
 
 type AuthService interface {
@@ -34,10 +37,42 @@ func NewURLHandler(log *logger.Logger, svc URLService, auth AuthService) *urlHan
 	return &urlHandler{log: log, svc: svc, auth: auth}
 }
 
+func (h *urlHandler) URLByID(w http.ResponseWriter, r *http.Request) {
+	urlID, err := strconv.Atoi(strings.Trim(r.URL.Path, "/"))
+	if err != nil {
+		h.log.Error("URLByID", logger.Error(err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	res, err := h.svc.URLByID(r.Context(), urlID)
+	if err != nil {
+		if errors.Is(err, model.ErrDeleted) {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
+		h.log.Error("URLByID", logger.Error(err))
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		h.log.Error("URLByID", logger.Error(err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func (h *urlHandler) RedirectURL(w http.ResponseWriter, r *http.Request) {
 	shortURL := strings.Trim(r.URL.Path, "/")
 	originalURL, err := h.svc.OriginalURL(r.Context(), shortURL)
 	if err != nil {
+		if errors.Is(err, model.ErrDeleted) {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
 		h.log.Error("RedirectURL", logger.Error(err))
 		http.NotFound(w, r)
 		return
@@ -215,6 +250,38 @@ func (h *urlHandler) ShortenBatchJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *urlHandler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.auth.UserIDFromContext(r.Context())
+	if !ok {
+		h.log.Error("DeleteURLs", logger.ErrorS("unauthorized user"))
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	defer r.Body.Close()
+
+	dec := json.NewDecoder(r.Body)
+	var urls []string
+	if err := dec.Decode(&urls); err != nil {
+		h.log.Error("DeleteURLs", logger.Error(err))
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		h.log.Error("DeleteURLs", logger.ErrorS("empty URL"))
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+
+	h.svc.MakeDeleted(r.Context(), model.DeleteURLsRequest{
+		UserID: userID,
+		URLs:   urls,
+	})
 }
 
 func (h *urlHandler) PingDB(w http.ResponseWriter, r *http.Request) {

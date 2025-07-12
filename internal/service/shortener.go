@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"shortener/internal/model"
+	"shortener/internal/shared/logger"
 )
 
 type URLRepository interface {
@@ -16,16 +18,26 @@ type URLRepository interface {
 	Save(context.Context, model.URLStore) (string, error)
 	SaveAll(context.Context, []model.URLStore) error
 	Get(context.Context, string) (model.URLStore, error)
+	GetByID(context.Context, int) (model.URLStore, error)
 	GetAllByUser(context.Context, string) ([]model.URLStore, error)
+	DeleteBatch(context.Context, string, []string) error
 }
 
 type urlService struct {
 	baseAddr string
 	repo     URLRepository
+	delCh    chan model.DeleteURLsRequest
 }
 
-func NewURLService(baseAddr string, repo URLRepository) *urlService {
-	return &urlService{baseAddr: strings.TrimRight(baseAddr, "/"), repo: repo}
+func NewURLService(ctx context.Context, baseAddr string, repo URLRepository) *urlService {
+	s := &urlService{
+		baseAddr: strings.TrimRight(baseAddr, "/"),
+		repo:     repo,
+		delCh:    make(chan model.DeleteURLsRequest, 10),
+	}
+
+	s.deleteBatch(ctx)
+	return s
 }
 
 func (s *urlService) GenerateShortURL(ctx context.Context, scheme, userID, original string) (string, error) {
@@ -97,6 +109,10 @@ func (s *urlService) OriginalURL(ctx context.Context, short string) (string, err
 	return u.Original, nil
 }
 
+func (s *urlService) URLByID(ctx context.Context, uuid int) (model.URLStore, error) {
+	return s.repo.GetByID(ctx, uuid)
+}
+
 func (s *urlService) UserStore(ctx context.Context, userID string) ([]model.URLStore, error) {
 	res, err := s.repo.GetAllByUser(ctx, userID)
 	if err != nil {
@@ -109,6 +125,52 @@ func (s *urlService) UserStore(ctx context.Context, userID string) ([]model.URLS
 	}
 
 	return res, nil
+}
+
+func (s *urlService) MakeDeleted(ctx context.Context, req model.DeleteURLsRequest) {
+	s.delCh <- req
+}
+
+func (s *urlService) deleteBatch(ctx context.Context) {
+	go func() {
+		const maxBatchSize = 20
+		var (
+			ticker  = time.NewTicker(1 * time.Second)
+			pending = make(map[string]model.DeleteURLsRequest, maxBatchSize)
+		)
+		defer ticker.Stop()
+
+		flush := func(pend model.DeleteURLsRequest) {
+			if len(pend.URLs) > 0 {
+				if err := s.repo.DeleteBatch(ctx, pend.UserID, pend.URLs); err != nil {
+					logger.L().Error("DeleteURLs", logger.ErrorS("empty URL"))
+				}
+			}
+		}
+		for {
+			select {
+			case in := <-s.delCh:
+				v := pending[in.UserID]
+				v.UserID = in.UserID
+				v.URLs = append(pending[in.UserID].URLs, in.URLs...)
+				pending[in.UserID] = v
+				if len(pending[in.UserID].URLs) >= maxBatchSize {
+					flush(pending[in.UserID])
+					delete(pending, in.UserID)
+				}
+			case <-ticker.C:
+				for k := range pending {
+					flush(pending[k])
+					delete(pending, k)
+				}
+			case <-ctx.Done():
+				for _, p := range pending {
+					flush(p)
+				}
+				return
+			}
+		}
+	}()
 }
 
 func (s *urlService) Ping(ctx context.Context) error { return s.repo.Ping(ctx) }

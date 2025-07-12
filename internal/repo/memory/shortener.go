@@ -63,3 +63,11 @@ func (repo *urlRepository) SaveAll(ctx context.Context, urls []model.URLStore) e
 func (repo *urlRepository) GetAllByUser(ctx context.Context, userID string) ([]model.URLStore, error) {
 	return []model.URLStore{}, errors.New("unimplemented")
 }
+
+func (repo *urlRepository) DeleteBatch(ctx context.Context, userID string, urls []string) error {
+	return errors.New("unimplemented")
+}
+
+func (repo *urlRepository) GetByID(ctx context.Context, uuid int) (model.URLStore, error) {
+	return model.URLStore{}, errors.New("unimplemented")
+}
